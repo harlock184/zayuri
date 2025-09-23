@@ -34,8 +34,7 @@ export const useGAS = () => {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Initialize GAS service
-  // dentro de useEffect:
+  /******************** INIT ********************/
   useEffect(() => {
     try {
       const gasUrl = import.meta.env.VITE_GAS_URL || '';
@@ -46,7 +45,7 @@ export const useGAS = () => {
         key: gasKey ? 'Set' : 'Missing',
       });
 
-      // ✅ calcula un flag sin depender del estado
+      // Flag local – no dependemos del estado aún
       const connected =
         !!gasUrl &&
         gasUrl !== 'YOUR_GAS_URL_HERE' &&
@@ -65,8 +64,8 @@ export const useGAS = () => {
         loadInitialDataFromLocalStorage();
       } else {
         console.log('GAS service initialized successfully');
-        getGASService(); // inicializa el service
-        // ✅ usa el flag local; no esperes a que el estado se actualice
+        // Inicializa service y arranca carga inmediata
+        getGASService();
         loadInitialDataWithGASFallback(true);
       }
     } catch (err) {
@@ -77,310 +76,234 @@ export const useGAS = () => {
     }
   }, []);
 
-
-  // Load data only from localStorage
+  /******************** LOCAL LOAD ********************/
   const loadInitialDataFromLocalStorage = () => {
     console.log('Loading data from localStorage only...');
 
-    const savedStudents = localStorage.getItem('wonderGymStudents');
-    const savedCoaches = localStorage.getItem('wonderGymCoaches');
-
-    if (savedStudents) {
-      try {
-        const parsedStudents = JSON.parse(savedStudents);
-        console.log('Loaded students from localStorage:', parsedStudents);
-        setStudents(parsedStudents);
-      } catch (err) {
-        console.error('Error parsing saved students:', err);
+    try {
+      const savedStudents = localStorage.getItem('wonderGymStudents');
+      if (savedStudents) {
+        const parsed = JSON.parse(savedStudents);
+        console.log('Loaded students from localStorage:', parsed);
+        setStudents(parsed);
+      } else {
+        console.log('No students found in localStorage');
         setStudents([]);
       }
-    } else {
-      console.log('No students found in localStorage');
+    } catch (e) {
+      console.error('Error parsing saved students:', e);
       setStudents([]);
     }
 
-    if (savedCoaches) {
-      try {
-        const parsedCoaches = JSON.parse(savedCoaches);
-        console.log('Loaded coaches from localStorage:', parsedCoaches);
-        setCoaches(parsedCoaches);
-      } catch (err) {
-        console.error('Error parsing saved coaches:', err);
+    try {
+      const savedCoaches = localStorage.getItem('wonderGymCoaches');
+      if (savedCoaches) {
+        const parsed = JSON.parse(savedCoaches);
+        console.log('Loaded coaches from localStorage:', parsed);
+        setCoaches(parsed);
+      } else {
+        console.log('No coaches found in localStorage');
         setCoaches([]);
       }
-    } else {
-      console.log('No coaches found in localStorage');
+    } catch (e) {
+      console.error('Error parsing saved coaches:', e);
       setCoaches([]);
     }
   };
 
-  // Load initial data with GAS fallback
-
-  // después
+  /******************** INITIAL REMOTE LOAD (FALLBACK) ********************/
+  // Recibe flag local para no depender del timing de setIsConnected
   const loadInitialDataWithGASFallback = async (connectedFlag: boolean) => {
     console.log('Loading initial data with GAS fallback...');
+    // Pinta algo al instante
     loadInitialDataFromLocalStorage();
 
-    if (connectedFlag) {
+    if (!connectedFlag) return;
+
+    try {
       console.log('Attempting to load from Google Sheets...');
-      try {
-        await loadStudentsFromGAS();
-        await loadCoachesFromGAS();
-        console.log('Successfully loaded from Google Sheets');
-        setError(null);
-      } catch (err) {
-        console.warn('Could not load from GAS, using localStorage data:', err);
-        setIsConnected(false);
-      }
+      await Promise.all([loadStudentsFromGAS(), loadCoachesFromGAS()]);
+      console.log('Successfully loaded from Google Sheets');
+      setError(null);
+    } catch (err) {
+      console.warn('Could not load from GAS, using localStorage data:', err);
+      // No apagues isConnected por un fallo puntual de red
     }
   };
 
-  // const loadInitialDataWithGASFallback = async () => {
-  //   console.log('Loading initial data with GAS fallback...');
-
-  //   // Always load from localStorage first (immediate)
-  //   loadInitialDataFromLocalStorage();
-
-  //   // Only try to load from GAS if connected
-  //   if (isConnected) {
-  //     console.log('Attempting to load from Google Sheets...');
-  //     try {
-  //       await loadStudentsFromGAS();
-  //       await loadCoachesFromGAS();
-  //       console.log('Successfully loaded from Google Sheets');
-  //       setError(null);
-  //     } catch (err) {
-  //       console.warn('Could not load from GAS, using localStorage data:', err);
-  //       setIsConnected(false);
-  //     }
-  //   }
-  // };
-
-  // Load students from GAS
+  /******************** REMOTE LOADERS ********************/
+  // Importante: sin "early return" por isConnected. Siempre intenta y cae a local por catch.
   const loadStudentsFromGAS = async (query?: string) => {
-    console.log('loadStudentsFromGAS called');
-
-    if (!isConnected) {
-      console.log('GAS not connected, skipping remote load');
-      return;
-    }
-
+    console.log('loadStudentsFromGAS called (will try remote, fallback on error)');
     setLoading(true);
-
     try {
-      const gasService = getGASService();
-      const studentsData = await gasService.getStudents(query);
-      console.log('Students data from GAS:', studentsData.length, 'items');
-      setStudents(studentsData);
-
-      // Also save to localStorage as backup
-      localStorage.setItem('wonderGymStudents', JSON.stringify(studentsData));
-    } catch (err: any) {
-      console.error('Load students error:', err);
-      // Don't throw error, just log it and continue with local data
-      setIsConnected(false);
+      const gas = getGASService();
+      const items = await gas.getStudents(query);
+      console.log('Students data from GAS:', items.length, 'items');
+      setStudents(items);
+      localStorage.setItem('wonderGymStudents', JSON.stringify(items));
+    } catch (err) {
+      console.warn('Load students from GAS failed, keeping local:', err);
+      // Mantén local si falla
     } finally {
       setLoading(false);
     }
   };
 
-  // Load coaches from GAS
   const loadCoachesFromGAS = async (query?: string) => {
-    console.log('loadCoachesFromGAS called');
-
-    if (!isConnected) {
-      console.log('GAS not connected, skipping remote load');
-      return;
-    }
-
+    console.log('loadCoachesFromGAS called (will try remote, fallback on error)');
     setLoading(true);
-
     try {
-      const gasService = getGASService();
-      const coachesData = await gasService.getCoaches(query);
-      console.log('Coaches data from GAS:', coachesData.length, 'items');
-      setCoaches(coachesData);
-
-      // Also save to localStorage as backup
-      localStorage.setItem('wonderGymCoaches', JSON.stringify(coachesData));
-    } catch (err: any) {
-      console.error('Load coaches error:', err);
-      // Don't throw error, just log it and continue with local data
-      setIsConnected(false);
+      const gas = getGASService();
+      const items = await gas.getCoaches(query);
+      console.log('Coaches data from GAS:', items.length, 'items');
+      setCoaches(items);
+      localStorage.setItem('wonderGymCoaches', JSON.stringify(items));
+    } catch (err) {
+      console.warn('Load coaches from GAS failed, keeping local:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Public functions for manual loading
+  /******************** PUBLIC LOADERS ********************/
   const loadStudents = async (query?: string) => {
-    if (isConnected) {
+    try {
       await loadStudentsFromGAS(query);
-    } else {
-      console.log('GAS not connected, using localStorage only');
+    } catch {
+      console.log('Falling back to local students');
+      loadInitialDataFromLocalStorage();
     }
   };
 
   const loadCoaches = async (query?: string) => {
-    if (isConnected) {
+    try {
       await loadCoachesFromGAS(query);
-    } else {
-      console.log('GAS not connected, using localStorage only');
+    } catch {
+      console.log('Falling back to local coaches');
+      loadInitialDataFromLocalStorage();
     }
   };
 
-  // Add student
+  /******************** MUTATIONS (OPTIMISTIC UI + REFRESH REMOTO) ********************/
   const addStudent = async (student: Omit<Student, 'id' | 'creado_at'>) => {
     const newStudent: Student = {
       ...student,
       id: Date.now().toString(),
-      creado_at: new Date().toISOString()
+      creado_at: new Date().toISOString(),
     };
 
-    // Always update local state first for immediate UI feedback
-    const updatedStudents = [...students, newStudent];
-    setStudents(updatedStudents);
-    localStorage.setItem('wonderGymStudents', JSON.stringify(updatedStudents));
+    const updated = [...students, newStudent];
+    setStudents(updated);
+    localStorage.setItem('wonderGymStudents', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.addStudent(student);
-        console.log('Student synced to Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync to Google Sheets, but saved locally:', err.message);
-        // Don't show error for sync failures if local save worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.addStudent(student);
+      console.log('Student synced to Google Sheets successfully');
+      // refresca estado desde Sheets
+      await loadStudentsFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync to Google Sheets, but saved locally:', err?.message || err);
     }
   };
 
-  // Delete student
   const deleteStudent = async (id: string) => {
-    // Always update local state first
-    const updatedStudents = students.filter(s => s.id !== id);
-    setStudents(updatedStudents);
-    localStorage.setItem('wonderGymStudents', JSON.stringify(updatedStudents));
+    const updated = students.filter(s => s.id !== id);
+    setStudents(updated);
+    localStorage.setItem('wonderGymStudents', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.deleteStudent(id);
-        console.log('Student deleted from Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync deletion to Google Sheets:', err.message);
-        // Don't show error for sync failures if local deletion worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.deleteStudent(id);
+      console.log('Student deleted from Google Sheets successfully');
+      await loadStudentsFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync deletion to Google Sheets:', err?.message || err);
     }
   };
-  // Update student
+
   const updateStudent = async (id: string, student: Partial<Student>) => {
-    // Always update local state first
-    const updatedStudents = students.map(s =>
-      s.id === id ? { ...s, ...student } : s
-    );
-    setStudents(updatedStudents);
-    localStorage.setItem('wonderGymStudents', JSON.stringify(updatedStudents));
+    const updated = students.map(s => (s.id === id ? { ...s, ...student } : s));
+    setStudents(updated);
+    localStorage.setItem('wonderGymStudents', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.updateStudent(id, student);
-        console.log('Student updated in Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync update to Google Sheets:', err.message);
-        // Don't show error for sync failures if local update worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.updateStudent(id, student);
+      console.log('Student updated in Google Sheets successfully');
+      await loadStudentsFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync update to Google Sheets:', err?.message || err);
     }
   };
 
-
-  // Add coach
   const addCoach = async (coach: Omit<Coach, 'id' | 'creado_at'>) => {
     const newCoach: Coach = {
       ...coach,
       id: Date.now().toString(),
-      creado_at: new Date().toISOString()
+      creado_at: new Date().toISOString(),
     };
 
-    // Always update local state first for immediate UI feedback
-    const updatedCoaches = [...coaches, newCoach];
-    setCoaches(updatedCoaches);
-    localStorage.setItem('wonderGymCoaches', JSON.stringify(updatedCoaches));
+    const updated = [...coaches, newCoach];
+    setCoaches(updated);
+    localStorage.setItem('wonderGymCoaches', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.addCoach(coach);
-        console.log('Coach synced to Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync to Google Sheets, but saved locally:', err.message);
-        // Don't show error for sync failures if local save worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.addCoach(coach);
+      console.log('Coach synced to Google Sheets successfully');
+      await loadCoachesFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync to Google Sheets, but saved locally:', err?.message || err);
     }
   };
 
-  // Update coach
   const updateCoach = async (id: string, coach: Partial<Coach>) => {
-    // Always update local state first
-    const updatedCoaches = coaches.map(c =>
-      c.id === id ? { ...c, ...coach } : c
-    );
-    setCoaches(updatedCoaches);
-    localStorage.setItem('wonderGymCoaches', JSON.stringify(updatedCoaches));
+    const updated = coaches.map(c => (c.id === id ? { ...c, ...coach } : c));
+    setCoaches(updated);
+    localStorage.setItem('wonderGymCoaches', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.updateCoach(id, coach);
-        console.log('Coach updated in Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync update to Google Sheets:', err.message);
-        // Don't show error for sync failures if local update worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.updateCoach(id, coach);
+      console.log('Coach updated in Google Sheets successfully');
+      await loadCoachesFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync update to Google Sheets:', err?.message || err);
     }
   };
 
-  // Delete coach
   const deleteCoach = async (id: string) => {
-    // Always update local state first
-    const updatedCoaches = coaches.filter(c => c.id !== id);
-    setCoaches(updatedCoaches);
-    localStorage.setItem('wonderGymCoaches', JSON.stringify(updatedCoaches));
+    const updated = coaches.filter(c => c.id !== id);
+    setCoaches(updated);
+    localStorage.setItem('wonderGymCoaches', JSON.stringify(updated));
 
-    // Try to sync with Google Sheets in background
-    if (isConnected) {
-      try {
-        const gasService = getGASService();
-        await gasService.deleteCoach(id);
-        console.log('Coach deleted from Google Sheets successfully');
-      } catch (err: any) {
-        console.warn('Failed to sync deletion to Google Sheets:', err.message);
-        // Don't show error for sync failures if local deletion worked
-      }
+    try {
+      const gas = getGASService();
+      await gas.deleteCoach(id);
+      console.log('Coach deleted from Google Sheets successfully');
+      await loadCoachesFromGAS();
+    } catch (err: any) {
+      console.warn('Failed to sync deletion to Google Sheets:', err?.message || err);
     }
   };
 
-  // Load training plan
+  /******************** TRAINING PLAN ********************/
   const loadTrainingPlan = async (studentId: string) => {
     try {
-      const gasService = getGASService();
-      return await gasService.getTrainingPlan(studentId);
+      const gas = getGASService();
+      return await gas.getTrainingPlan(studentId);
     } catch (err) {
       console.error('Failed to load training plan:', err);
       return null;
     }
   };
 
-  // Save training plan
   const saveTrainingPlan = async (studentId: string, planData: any) => {
     try {
-      const gasService = getGASService();
-      await gasService.saveTrainingPlan(studentId, planData);
+      const gas = getGASService();
+      await gas.saveTrainingPlan(studentId, planData);
     } catch (err: any) {
       setError(`Failed to save training plan: ${err.message}`);
       console.error('Save training plan error:', err);
@@ -406,6 +329,6 @@ export const useGAS = () => {
     saveTrainingPlan,
     setStudents,
     setCoaches,
-    setError
+    setError,
   };
 };
