@@ -43,29 +43,21 @@ class GASService {
 
   // -------- GET (listar) --------
   private async get(sheet: string, query?: string): Promise<any[]> {
-    if (!this.config.url) throw new Error('GAS not configured');
+    // Reutilizamos la misma ruta POST con action:'list'
+    const url = new URL(this.config.url);
+    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('origin', this.getOrigin());
 
-    try {
-      const params = new URLSearchParams({
-        key: this.config.apiKey,
-        sheet,
-        origin: this.getOrigin(),
-      });
-      if (query) params.append('q', query);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' }, // evita preflight
+      body: JSON.stringify({ action: 'list', sheet, q: query || '' }),
+    });
 
-      const res = await fetch(`${this.config.url}?${params.toString()}`, {
-        method: 'GET',
-        mode: 'cors', // importante
-        // No Content-Type en GET para evitar preflight
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      return data.items || [];
-    } catch (err) {
-      console.error(`Error fetching ${sheet}:`, err);
-      throw err;
-    }
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    return data.items || [];
   }
 
   // -------- POST (append/update/delete) --------
