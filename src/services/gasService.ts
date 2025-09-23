@@ -41,134 +41,84 @@ class GASService {
     return window.location.origin;
   }
 
-  // Generic GET request
+  // -------- GET (listar) --------
   private async get(sheet: string, query?: string): Promise<any[]> {
+    if (!this.config.url) throw new Error('GAS not configured');
+
     try {
       const params = new URLSearchParams({
         key: this.config.apiKey,
         sheet,
-        origin: this.getOrigin()
+        origin: this.getOrigin(),
       });
+      if (query) params.append('q', query);
 
-      if (query) {
-        params.append('q', query);
-      }
-
-      const response = await fetch(`${this.config.url}?${params}`, {
+      const res = await fetch(`${this.config.url}?${params.toString()}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        mode: 'cors', // importante
+        // No Content-Type en GET para evitar preflight
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.ok) {
-        throw new Error(data.error || 'Unknown error');
-      }
-
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
       return data.items || [];
-    } catch (error) {
-      console.error(`Error fetching ${sheet}:`, error);
-      throw error;
+    } catch (err) {
+      console.error(`Error fetching ${sheet}:`, err);
+      throw err;
     }
   }
 
-  // Generic POST request
+  // -------- POST (append/update/delete) --------
   private async post(action: string, sheet: string, id?: string, item?: any): Promise<void> {
-    try {
-      // Validate configuration first
-      if (!this.config.url || this.config.url === 'YOUR_GAS_URL_HERE') {
-        throw new Error('Google Apps Script URL no configurada. Verifica tu archivo .env.local');
-      }
-      
-      if (!this.config.apiKey || this.config.apiKey === 'YOUR_API_KEY_HERE') {
-        throw new Error('API Key no configurada. Verifica tu archivo .env.local');
-      }
-
-      const body = {
-        action,
-        sheet,
-        ...(id && { id }),
-        ...(item && { item })
-      };
-
-      console.log('Sending POST request:', {
-        url: this.config.url,
-        body: body,
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-
-      // Add query parameters for key and origin
-      const url = new URL(this.config.url);
-      url.searchParams.append('key', this.config.apiKey);
-      url.searchParams.append('origin', this.getOrigin());
-
-      const response = await fetch(url.toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        mode: 'no-cors' // Try no-cors mode for Google Apps Script
-      });
-
-      console.log('Response status:', response.status);
-
-      // With no-cors mode, we can't read the response
-      // Google Apps Script should return success if no error is thrown
-      if (response.type === 'opaque') {
-        // Request was sent successfully with no-cors
-        console.log('Request sent successfully (no-cors mode)');
-        return;
-      }
-
-      // If we can read the response (shouldn't happen with no-cors)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-    } catch (error) {
-      console.error(`Error ${action} ${sheet}:`, error);
-      
-      // Provide more specific error messages
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('No se pudo conectar al Google Apps Script. Verifica la URL y que esté desplegado correctamente.');
-      }
-      
-      throw error;
+    if (!this.config.url) {
+      console.log('GAS not configured, skipping remote operation');
+      return;
     }
+    if (!this.config.url || this.config.url === 'YOUR_GAS_URL_HERE') {
+      throw new Error('Google Apps Script URL no configurada. Verifica tu archivo .env.local');
+    }
+    if (!this.config.apiKey || this.config.apiKey === 'YOUR_API_KEY_HERE') {
+      throw new Error('API Key no configurada. Verifica tu archivo .env.local');
+    }
+
+    const body = { action, sheet, ...(id && { id }), ...(item && { item }) };
+
+    // Construye URL con key + origin en query
+    const url = new URL(this.config.url);
+    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('origin', this.getOrigin());
+
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      mode: 'cors',                         // importante
+      headers: { 'Content-Type': 'text/plain' }, // clave para evitar preflight
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   }
 
-  // Students methods
+  // -------- Students --------
   async getStudents(query?: string): Promise<Student[]> {
     const items = await this.get('Alumnos', query);
     return items.map(item => ({
-      id: String(item.id || ''),
-      nombre: String(item.nombre || ''),
-      diasEntrenamiento: String(item.diasEntrenamiento || ''),
-      coachAsignado: String(item.coachAsignado || ''),
-      fechaInicio: String(item.fechaInicio || ''),
-      fechaFin: String(item.fechaFin || ''),
-      email: String(item.email || ''),
-      telefono: String(item.telefono || ''),
-      nivel: String(item.nivel || ''),
-      objetivos: String(item.objetivos || ''),
-      creado_at: String(item.creado_at || '')
+      id: String(item.id ?? ''),
+      nombre: String(item.nombre ?? ''),
+      diasEntrenamiento: String(item.diasEntrenamiento ?? ''),
+      coachAsignado: String(item.coachAsignado ?? ''),
+      fechaInicio: String(item.fechaInicio ?? ''),
+      fechaFin: String(item.fechaFin ?? ''),
+      email: String(item.email ?? ''),
+      telefono: String(item.telefono ?? ''),
+      nivel: String(item.nivel ?? ''),
+      objetivos: String(item.objetivos ?? ''),
+      creado_at: String(item.creado_at ?? '')
     }));
   }
 
   async addStudent(student: Omit<Student, 'id' | 'creado_at'>): Promise<void> {
-    const item = {
-      id: Date.now().toString(), // Generate ID
-      ...student
-    };
+    const item = { id: Date.now().toString(), ...student };
     await this.post('append', 'Alumnos', undefined, item);
   }
 
@@ -180,27 +130,27 @@ class GASService {
     await this.post('delete', 'Alumnos', id);
   }
 
-  // Coaches methods
+  // -------- Coaches --------
   async getCoaches(query?: string): Promise<Coach[]> {
     const items = await this.get('Instructores', query);
     return items.map(item => ({
-      id: String(item.id || ''),
-      nombre: String(item.nombre || ''),
-      email: String(item.email || ''),
-      telefono: String(item.telefono || ''),
-      especialidad: String(item.especialidad || ''),
-      experiencia: String(item.experiencia || ''),
-      certificaciones: String(item.certificaciones || ''),
+      id: String(item.id ?? ''),
+      nombre: String(item.nombre ?? ''),
+      email: String(item.email ?? ''),
+      telefono: String(item.telefono ?? ''),
+      especialidad: String(item.especialidad ?? ''),
+      experiencia: String(item.experiencia ?? ''),
+      certificaciones: String(item.certificaciones ?? ''),
       activo: Boolean(item.activo === 'TRUE' || item.activo === true || item.activo === 'true'),
-      creado_at: String(item.creado_at || '')
+      creado_at: String(item.creado_at ?? '')
     }));
   }
 
   async addCoach(coach: Omit<Coach, 'id' | 'creado_at'>): Promise<void> {
     const item = {
-      id: Date.now().toString(), // Generate ID
+      id: Date.now().toString(),
       ...coach,
-      activo: coach.activo ? 'TRUE' : 'FALSE' // Convert boolean to string
+      activo: coach.activo ? 'TRUE' : 'FALSE', // a texto como en Sheet
     };
     await this.post('append', 'Instructores', undefined, item);
   }
@@ -217,11 +167,9 @@ class GASService {
     await this.post('delete', 'Instructores', id);
   }
 
-  // Training plans (stored as JSON in a separate sheet or as part of student data)
+  // -------- Training plans (localStorage) --------
   async getTrainingPlan(studentId: string): Promise<any> {
     try {
-      // For now, we'll store training plans in localStorage
-      // You can extend your GAS to handle training plans if needed
       return JSON.parse(localStorage.getItem(`wonderGymPlan_${studentId}`) || 'null');
     } catch (error) {
       console.error('Error loading training plan:', error);
@@ -231,8 +179,6 @@ class GASService {
 
   async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
     try {
-      // For now, we'll store training plans in localStorage
-      // You can extend your GAS to handle training plans if needed
       localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
     } catch (error) {
       console.error('Error saving training plan:', error);
@@ -246,12 +192,13 @@ let gasService: GASService | null = null;
 
 export const initializeGAS = (): GASService => {
   const config = {
-    url: import.meta.env.VITE_GAS_URL,
-    apiKey: import.meta.env.VITE_GAS_KEY
+    url: import.meta.env.VITE_GAS_URL || '',
+    apiKey: import.meta.env.VITE_GAS_KEY || ''
   };
 
-  if (!config.url || !config.apiKey) {
-    throw new Error('GAS configuration missing. Check your .env.local file.');
+  if (!config.url || !config.apiKey || config.url === 'undefined' || config.apiKey === 'undefined') {
+    console.log('GAS not configured, creating local-only service');
+    return new GASService({ url: '', apiKey: '' });
   }
 
   gasService = new GASService(config);
@@ -259,9 +206,7 @@ export const initializeGAS = (): GASService => {
 };
 
 export const getGASService = (): GASService => {
-  if (!gasService) {
-    return initializeGAS();
-  }
+  if (!gasService) return initializeGAS();
   return gasService;
 };
 

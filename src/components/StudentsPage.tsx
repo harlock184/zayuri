@@ -52,8 +52,14 @@ const StudentsPage: React.FC<StudentsPageProps> = ({ onSelectStudent }) => {
 
   // Load students from localStorage
   useEffect(() => {
-    loadStudents();
-    loadCoaches();
+    // Data loading is now handled automatically by the hook
+    // But we can trigger a refresh if needed
+    if (students.length === 0) {
+      loadStudents();
+    }
+    if (coaches.length === 0) {
+      loadCoaches();
+    }
   }, []);
 
   // Filter students based on search term
@@ -113,11 +119,11 @@ const StudentsPage: React.FC<StudentsPageProps> = ({ onSelectStudent }) => {
 
   // Handler functions for modal
   const handleNewStudentChange = (field: string, value: string) => {
-    setNewStudent(prev => ({ ...prev, [field]: value }));
+    setNewStudent((prev: Partial<Student>) => ({ ...prev, [field]: value }));
   };
 
   const handleEditStudentChange = (field: string, value: string) => {
-    setEditingStudent(prev => prev ? { ...prev, [field]: value } : null);
+    setEditingStudent((prev: Student | null) => prev ? { ...prev, [field]: value } : null);
   };
 
   return (
