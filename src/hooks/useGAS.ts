@@ -35,6 +35,7 @@ export const useGAS = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   // Initialize GAS service
+  // dentro de useEffect:
   useEffect(() => {
     try {
       const gasUrl = import.meta.env.VITE_GAS_URL || '';
@@ -45,26 +46,37 @@ export const useGAS = () => {
         key: gasKey ? 'Set' : 'Missing',
       });
 
-      // Check if we have valid configuration
-      if (!gasUrl || gasUrl === 'YOUR_GAS_URL_HERE' || !gasKey || gasKey === 'YOUR_API_KEY_HERE' || gasUrl === 'undefined' || gasKey === 'undefined' || gasUrl === '' || gasKey === '') {
+      // ✅ calcula un flag sin depender del estado
+      const connected =
+        !!gasUrl &&
+        gasUrl !== 'YOUR_GAS_URL_HERE' &&
+        gasUrl !== 'undefined' &&
+        gasUrl.trim() !== '' &&
+        !!gasKey &&
+        gasKey !== 'YOUR_API_KEY_HERE' &&
+        gasKey !== 'undefined' &&
+        gasKey.trim() !== '';
+
+      setIsConnected(connected);
+
+      if (!connected) {
         console.warn('GAS not properly configured, using localStorage only');
-        setIsConnected(false);
-        setError(null); // Don't show error for intentional local-only mode
+        setError(null);
         loadInitialDataFromLocalStorage();
       } else {
         console.log('GAS service initialized successfully');
-        // Initialize GAS service
-        getGASService();
-        setIsConnected(true);
-        loadInitialDataWithGASFallback();
+        getGASService(); // inicializa el service
+        // ✅ usa el flag local; no esperes a que el estado se actualice
+        loadInitialDataWithGASFallback(true);
       }
     } catch (err) {
       console.error('GAS initialization error:', err);
       setIsConnected(false);
-      setError(null); // Don't show error, just use local mode
+      setError(null);
       loadInitialDataFromLocalStorage();
     }
   }, []);
+
 
   // Load data only from localStorage
   const loadInitialDataFromLocalStorage = () => {
@@ -103,14 +115,13 @@ export const useGAS = () => {
   };
 
   // Load initial data with GAS fallback
-  const loadInitialDataWithGASFallback = async () => {
-    console.log('Loading initial data with GAS fallback...');
 
-    // Always load from localStorage first (immediate)
+  // después
+  const loadInitialDataWithGASFallback = async (connectedFlag: boolean) => {
+    console.log('Loading initial data with GAS fallback...');
     loadInitialDataFromLocalStorage();
 
-    // Only try to load from GAS if connected
-    if (isConnected) {
+    if (connectedFlag) {
       console.log('Attempting to load from Google Sheets...');
       try {
         await loadStudentsFromGAS();
@@ -123,6 +134,27 @@ export const useGAS = () => {
       }
     }
   };
+
+  // const loadInitialDataWithGASFallback = async () => {
+  //   console.log('Loading initial data with GAS fallback...');
+
+  //   // Always load from localStorage first (immediate)
+  //   loadInitialDataFromLocalStorage();
+
+  //   // Only try to load from GAS if connected
+  //   if (isConnected) {
+  //     console.log('Attempting to load from Google Sheets...');
+  //     try {
+  //       await loadStudentsFromGAS();
+  //       await loadCoachesFromGAS();
+  //       console.log('Successfully loaded from Google Sheets');
+  //       setError(null);
+  //     } catch (err) {
+  //       console.warn('Could not load from GAS, using localStorage data:', err);
+  //       setIsConnected(false);
+  //     }
+  //   }
+  // };
 
   // Load students from GAS
   const loadStudentsFromGAS = async (query?: string) => {
