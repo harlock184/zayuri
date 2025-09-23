@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&family=Dancing+Script:wght@400;700&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+.font-oswald {
+  font-family: 'Oswald', sans-serif;
+}
+
+.font-script {
+  font-family: 'Dancing Script', cursive;
+}
+
+/* Wonder Gym brand colors */
+:root {
+  --wonder-red: #E53E3E;
+  --wonder-dark: #1A202C;
+  --wonder-gold: #F6E05E;
+  --wonder-gray: #4A5568;
+  --wonder-light-gray: #F7FAFC;
+}
+
+/* Custom styles for better form styling */
+input[type="text"],
+input[type="date"],
+textarea {
+  transition: border-color 0.2s ease-in-out;
+}
+
+input[type="text"]:focus,
+input[type="date"]:focus,
+textarea:focus {
+  border-color: var(--wonder-red);
+  box-shadow: 0 0 0 1px var(--wonder-red);
+}
+
+/* Custom checkbox styling */
+input[type="checkbox"] {
+  accent-color: var(--wonder-red);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--wonder-red);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C53030;
+}
+
+/* Gradient backgrounds */
+.wonder-gradient {
+  background: linear-gradient(135deg, var(--wonder-red) 0%, #C53030 100%);
+}
+
+.wonder-dark-gradient {
+  background: linear-gradient(135deg, var(--wonder-dark) 0%, #2D3748 100%);
+}
