@@ -183,9 +183,10 @@ class GASService {
       const plans = await this.get('Planes');
       const plan = plans.find((p: any) => p.studentId === studentId);
 
-      if (plan && plan.plan) {
+      if (plan && plan.plan_json) {
         try {
-          return JSON.parse(plan.plan);
+          const planData = plan.plan_json;
+          return typeof planData === 'string' ? JSON.parse(planData) : planData;
         } catch (e) {
           console.error('Error parsing plan JSON:', e);
           return null;
@@ -202,6 +203,7 @@ class GASService {
   async saveTrainingPlan(studentId: string, plan: any): Promise<void> {
     await this.post({
       action: 'savePlan',
+      sheet: 'Planes',
       studentId,
       plan
     });
