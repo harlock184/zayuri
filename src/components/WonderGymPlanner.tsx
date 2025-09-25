@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useCallback, memo } from 'react';
 import { Save, Calendar, User, Target, Dumbbell, ArrowLeft } from 'lucide-react';
 import { useGAS } from '../hooks/useGAS';
 
@@ -6,6 +7,7 @@ interface ExerciseRow {
   exercise: string;
   series: string;
   reps: string;
+  id?: string;
 }
 
 interface PlanData {
@@ -59,6 +61,67 @@ interface WonderGymPlannerProps {
   onBack: () => void;
 }
 
+// Mover ExerciseSection fuera del componente principal y memoizarlo
+interface ExerciseSectionProps {
+  day: string;
+  exercises: ExerciseRow[];
+  onUpdateExercise: (day: string, index: number, field: string, value: string) => void;
+  onAddExerciseRow: (day: string) => void;
+  onRemoveExerciseRow: (day: string, index: number) => void;
+}
+
+const ExerciseSection = memo(({ day, exercises, onUpdateExercise, onAddExerciseRow, onRemoveExerciseRow }: ExerciseSectionProps) => (
+  <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow">
+    <h3 className="font-oswald font-bold text-gray-800 mb-3 text-lg uppercase tracking-wide">{day}</h3>
+    <div className="space-y-2">
+      <div className="grid grid-cols-12 gap-2 text-sm font-bold text-gray-600 mb-2 uppercase tracking-wide">
+        <div className="col-span-7">EJERCICIO:</div>
+        <div className="col-span-2 text-center">SERIES</div>
+        <div className="col-span-2 text-center">REPS.</div>
+        <div className="col-span-1"></div>
+      </div>
+      {exercises.map((row, index) => (
+        <div key={row.id || `${day}-${index}`} className="grid grid-cols-12 gap-2">
+          <input
+            type="text"
+            value={row.exercise}
+            onChange={(e) => onUpdateExercise(day, index, 'exercise', e.target.value)}
+            className="col-span-7 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm transition-colors"
+            placeholder="Nombre del ejercicio"
+          />
+          <input
+            type="text"
+            value={row.series}
+            onChange={(e) => onUpdateExercise(day, index, 'series', e.target.value)}
+            className="col-span-2 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm text-center transition-colors"
+            placeholder="3"
+          />
+          <input
+            type="text"
+            value={row.reps}
+            onChange={(e) => onUpdateExercise(day, index, 'reps', e.target.value)}
+            className="col-span-2 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm text-center transition-colors"
+            placeholder="12"
+          />
+          <button
+            onClick={() => onRemoveExerciseRow(day, index)}
+            className="col-span-1 text-red-500 hover:text-red-700 text-lg font-bold hover:bg-red-50 rounded transition-colors"
+            disabled={exercises.length === 1}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => onAddExerciseRow(day)}
+        className="text-red-600 hover:text-red-800 text-sm font-semibold mt-2 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+      >
+        + Agregar ejercicio
+      </button>
+    </div>
+  </div>
+));
+
 const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) => {
   const [planData, setPlanData] = useState<PlanData>({
     usuario: student?.nombre || '',
@@ -79,12 +142,12 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
       D: false,
     },
     rutinas: {
-      LUNES: [{ exercise: '', series: '', reps: '' }],
-      MARTES: [{ exercise: '', series: '', reps: '' }],
-      MIÉRCOLES: [{ exercise: '', series: '', reps: '' }],
-      JUEVES: [{ exercise: '', series: '', reps: '' }],
-      VIERNES: [{ exercise: '', series: '', reps: '' }],
-      SÁBADO: [{ exercise: '', series: '', reps: '' }],
+      LUNES: [{ exercise: '', series: '', reps: '', id: 'lunes-1' }],
+      MARTES: [{ exercise: '', series: '', reps: '', id: 'martes-1' }],
+      MIÉRCOLES: [{ exercise: '', series: '', reps: '', id: 'miercoles-1' }],
+      JUEVES: [{ exercise: '', series: '', reps: '', id: 'jueves-1' }],
+      VIERNES: [{ exercise: '', series: '', reps: '', id: 'viernes-1' }],
+      SÁBADO: [{ exercise: '', series: '', reps: '', id: 'sabado-1' }],
     },
     cardio: {
       L: '',
@@ -110,14 +173,29 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
   useEffect(() => {
     loadCoaches();
 
-    // Load plan data
     const loadPlanData = async () => {
       if (student) {
-        const savedData = await loadTrainingPlan(student.id);
-        if (savedData) {
-          setPlanData(savedData);
-        } else {
-          // Initialize with student data
+        try {
+          const savedData = await loadTrainingPlan(student.id);
+          console.log('Loading plan for student:', student.nombre);
+
+          if (savedData) {
+            setPlanData(savedData);
+            console.log('Plan loaded successfully');
+          } else {
+            // Initialize with student data if no plan exists
+            setPlanData(prev => ({
+              ...prev,
+              usuario: student.nombre,
+              coach: student.coachAsignado,
+              nivel: student.nivel || '',
+              objetivos: student.objetivos || '',
+              inicioDelPlan: student.fechaInicio || '',
+            }));
+          }
+        } catch (error) {
+          console.error('Error loading training plan:', error);
+          // Initialize with student data on error
           setPlanData(prev => ({
             ...prev,
             usuario: student.nombre,
@@ -129,20 +207,57 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
         }
       }
     };
-    
-    if (student) {
-      loadPlanData();
-    }
+
+    loadPlanData();
   }, [student]);
 
   // Save data to localStorage
   const saveData = async () => {
-    if (student) {
-      await saveTrainingPlan(student.id, planData);
-    } else {
-      localStorage.setItem('wonderGymPlan_default', JSON.stringify(planData));
+    try {
+      const saveButton = document.querySelector('[data-save-button]') as HTMLButtonElement;
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.innerHTML = '⏳ Guardando...';
+      }
+
+      if (student) {
+        await saveTrainingPlan(student.id, planData);
+        console.log('Plan saved for student:', student.nombre);
+      } else {
+        // For standalone planner without student
+        await saveTrainingPlan('default_plan', planData);
+        console.log('Default plan saved');
+      }
+
+      // Show success message
+      const successMessage = document.createElement('div');
+      successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+      successMessage.textContent = '✅ Plan guardado exitosamente';
+      document.body.appendChild(successMessage);
+
+      setTimeout(() => {
+        document.body.removeChild(successMessage);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error saving training plan:', error);
+
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+      errorMessage.textContent = '❌ Error al guardar. Intenta de nuevo.';
+      document.body.appendChild(errorMessage);
+
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 3000);
+    } finally {
+      const saveButton = document.querySelector('[data-save-button]') as HTMLButtonElement;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.innerHTML = '💾 Guardar';
+      }
     }
-    alert('¡Plan guardado exitosamente!');
   };
 
   const updateBasicInfo = (field: string, value: string | boolean) => {
@@ -162,39 +277,42 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
     }));
   };
 
-  const updateExercise = (day: string, index: number, field: string, value: string) => {
+  const updateExercise = useCallback((day: string, index: number, field: string, value: string) => {
     setPlanData(prev => ({
       ...prev,
       rutinas: {
         ...prev.rutinas,
-        [day]: prev.rutinas[day].map((row, i) => 
+        [day]: prev.rutinas[day].map((row, i) =>
           i === index ? { ...row, [field]: value } : row
         ),
       },
     }));
-  };
+  }, []);
 
-  const addExerciseRow = (day: string) => {
+  const addExerciseRow = useCallback((day: string) => {
     setPlanData(prev => ({
       ...prev,
       rutinas: {
         ...prev.rutinas,
-        [day]: [...prev.rutinas[day], { exercise: '', series: '', reps: '' }],
+        [day]: [...prev.rutinas[day], { exercise: '', series: '', reps: '', id: Date.now().toString() }],
       },
     }));
-  };
+  }, []);
 
-  const removeExerciseRow = (day: string, index: number) => {
-    if (planData.rutinas[day].length > 1) {
-      setPlanData(prev => ({
-        ...prev,
-        rutinas: {
-          ...prev.rutinas,
-          [day]: prev.rutinas[day].filter((_, i) => i !== index),
-        },
-      }));
-    }
-  };
+  const removeExerciseRow = useCallback((day: string, index: number) => {
+    setPlanData(prev => {
+      if (prev.rutinas[day].length > 1) {
+        return {
+          ...prev,
+          rutinas: {
+            ...prev.rutinas,
+            [day]: prev.rutinas[day].filter((_, i) => i !== index),
+          },
+        };
+      }
+      return prev;
+    });
+  }, []);
 
   const updateCardio = (day: string, value: string) => {
     setPlanData(prev => ({
@@ -208,57 +326,6 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
 
   // Get active coaches for dropdown
   const activeCoaches = coaches.filter(coach => coach.activo);
-  const ExerciseSection = ({ day }: { day: string }) => (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow">
-      <h3 className="font-oswald font-bold text-gray-800 mb-3 text-lg uppercase tracking-wide">{day}</h3>
-      <div className="space-y-2">
-        <div className="grid grid-cols-12 gap-2 text-sm font-bold text-gray-600 mb-2 uppercase tracking-wide">
-          <div className="col-span-7">EJERCICIO:</div>
-          <div className="col-span-2 text-center">SERIES</div>
-          <div className="col-span-2 text-center">REPS.</div>
-          <div className="col-span-1"></div>
-        </div>
-        {planData.rutinas[day].map((row, index) => (
-          <div key={index} className="grid grid-cols-12 gap-2">
-            <input
-              type="text"
-              value={row.exercise}
-              onChange={(e) => updateExercise(day, index, 'exercise', e.target.value)}
-              className="col-span-7 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm transition-colors"
-              placeholder="Nombre del ejercicio"
-            />
-            <input
-              type="text"
-              value={row.series}
-              onChange={(e) => updateExercise(day, index, 'series', e.target.value)}
-              className="col-span-2 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm text-center transition-colors"
-              placeholder="3"
-            />
-            <input
-              type="text"
-              value={row.reps}
-              onChange={(e) => updateExercise(day, index, 'reps', e.target.value)}
-              className="col-span-2 px-2 py-1 border-b-2 border-gray-300 focus:border-red-600 focus:outline-none text-sm text-center transition-colors"
-              placeholder="12"
-            />
-            <button
-              onClick={() => removeExerciseRow(day, index)}
-              className="col-span-1 text-red-500 hover:text-red-700 text-lg font-bold hover:bg-red-50 rounded transition-colors"
-              disabled={planData.rutinas[day].length === 1}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={() => addExerciseRow(day)}
-          className="text-red-600 hover:text-red-800 text-sm font-semibold mt-2 hover:bg-red-50 px-2 py-1 rounded transition-colors"
-        >
-          + Agregar ejercicio
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -286,6 +353,7 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
             </div>
             <button
               onClick={saveData}
+              data-save-button
               className="wonder-gradient hover:shadow-lg text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-all duration-200 font-semibold"
             >
               <Save size={16} />
@@ -434,7 +502,14 @@ const WonderGymPlanner: React.FC<WonderGymPlannerProps> = ({ student, onBack }) 
         {/* Exercise Sections */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
           {Object.keys(planData.rutinas).map(day => (
-            <ExerciseSection key={day} day={day} />
+            <ExerciseSection
+              key={day}
+              day={day}
+              exercises={planData.rutinas[day]}
+              onUpdateExercise={updateExercise}
+              onAddExerciseRow={addExerciseRow}
+              onRemoveExerciseRow={removeExerciseRow}
+            />
           ))}
         </div>
 

@@ -42,23 +42,42 @@ class GASService {
   }
 
   // -------- GET (listar) --------
+  // -------- GET (listar) --------
   private async get(sheet: string, query?: string): Promise<any[]> {
-    // Reutilizamos la misma ruta POST con action:'list'
-    const url = new URL(this.config.url);
+    const url = new URL(this.config.url);               // debe ser .../exec
     url.searchParams.set('key', this.config.apiKey);
     url.searchParams.set('origin', this.getOrigin());
+    url.searchParams.set('sheet', sheet);
+    if (query) url.searchParams.set('q', query);
 
     const res = await fetch(url.toString(), {
-      method: 'POST',
+      method: 'GET',
       mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' }, // evita preflight
-      body: JSON.stringify({ action: 'list', sheet, q: query || '' }),
+      cache: 'no-store',
     });
 
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     return data.items || [];
   }
+
+  // private async get(sheet: string, query?: string): Promise<any[]> {
+  //   // Reutilizamos la misma ruta POST con action:'list'
+  //   const url = new URL(this.config.url);
+  //   url.searchParams.set('key', this.config.apiKey);
+  //   url.searchParams.set('origin', this.getOrigin());
+
+  //   const res = await fetch(url.toString(), {
+  //     method: 'POST',
+  //     mode: 'cors',
+  //     headers: { 'Content-Type': 'text/plain' }, // evita preflight
+  //     body: JSON.stringify({ action: 'list', sheet, q: query || '' }),
+  //   });
+
+  //   const data = await res.json();
+  //   if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  //   return data.items || [];
+  // }
 
   // -------- POST (append/update/delete) --------
   private async post(action: string, sheet: string, id?: string, item?: any): Promise<void> {
@@ -183,6 +202,8 @@ class GASService {
 let gasService: GASService | null = null;
 
 export const initializeGAS = (): GASService => {
+  console.log("[WG] VITE_GAS_URL =", import.meta.env.VITE_GAS_URL);
+  console.log("[WG] VITE_GAS_KEY length =", (import.meta.env.VITE_GAS_KEY || "").length);
   const config = {
     url: import.meta.env.VITE_GAS_URL || '',
     apiKey: import.meta.env.VITE_GAS_KEY || ''
@@ -193,13 +214,24 @@ export const initializeGAS = (): GASService => {
     return new GASService({ url: '', apiKey: '' });
   }
 
+  console.log("[WG] initializeGAS config =", config);
+
+
   gasService = new GASService(config);
   return gasService;
 };
 
 export const getGASService = (): GASService => {
-  if (!gasService) return initializeGAS();
+  if (!gasService) {
+    console.log("[WG] getGASService: creando instancia");
+    console.log("[WG] VITE_GAS_URL =", import.meta.env.VITE_GAS_URL);
+    console.log("[WG] VITE_GAS_KEY length =", (import.meta.env.VITE_GAS_KEY || "").length);
+
+    return initializeGAS();
+  }
+  console.log("[WG] getGASService: usando instancia ya creada");
   return gasService;
 };
+
 
 export default GASService;
