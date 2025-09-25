@@ -61,26 +61,16 @@ class GASService {
     return data.items || [];
   }
 
-  // private async get(sheet: string, query?: string): Promise<any[]> {
-  //   // Reutilizamos la misma ruta POST con action:'list'
-  //   const url = new URL(this.config.url);
-  //   url.searchParams.set('key', this.config.apiKey);
-  //   url.searchParams.set('origin', this.getOrigin());
-
-  //   const res = await fetch(url.toString(), {
-  //     method: 'POST',
-  //     mode: 'cors',
-  //     headers: { 'Content-Type': 'text/plain' }, // evita preflight
-  //     body: JSON.stringify({ action: 'list', sheet, q: query || '' }),
-  //   });
-
-  //   const data = await res.json();
-  //   if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  //   return data.items || [];
-  // }
 
   // -------- POST (append/update/delete) --------
-  private async post(action: string, sheet: string, id?: string, item?: any): Promise<void> {
+  private async post(
+    action: string,
+    sheet: string,
+    id?: string,
+    item?: any,
+    studentId?: string,
+    plan?: any
+  ): Promise<void> {
     if (!this.config.url) {
       console.log('GAS not configured, skipping remote operation');
       return;
@@ -92,23 +82,27 @@ class GASService {
       throw new Error('API Key no configurada. Verifica tu archivo .env.local');
     }
 
-    const body = { action, sheet, ...(id && { id }), ...(item && { item }) };
+    const body: any = { action, sheet };
+    if (id) body.id = id;
+    if (item) body.item = item;
+    if (studentId) body.studentId = studentId;
+    if (plan) body.plan = plan;
 
-    // Construye URL con key + origin en query
     const url = new URL(this.config.url);
     url.searchParams.set('key', this.config.apiKey);
     url.searchParams.set('origin', this.getOrigin());
 
     const res = await fetch(url.toString(), {
       method: 'POST',
-      mode: 'cors',                         // importante
-      headers: { 'Content-Type': 'text/plain' }, // clave para evitar preflight
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(body),
     });
 
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   }
+
 
   // -------- Students --------
   async getStudents(query?: string): Promise<Student[]> {
@@ -178,24 +172,63 @@ class GASService {
     await this.post('delete', 'Instructores', id);
   }
 
-  // -------- Training plans (localStorage) --------
+
+  // -------- Training plans (Google Sheets en hoja "Planes") --------
+  async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
+    try {
+      // guarda en GAS (hoja Planes)
+      await this.post('savePlan', 'Planes', undefined, undefined, studentId, planData);
+
+      // opcional: también guarda en localStorage como backup
+      localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
+    } catch (error) {
+      console.error('Error saving training plan to GAS:', error);
+      throw error;
+    }
+  }
+
   async getTrainingPlan(studentId: string): Promise<any> {
     try {
-      return JSON.parse(localStorage.getItem(`wonderGymPlan_${studentId}`) || 'null');
+      const url = new URL(this.config.url);
+      url.searchParams.set('key', this.config.apiKey);
+      url.searchParams.set('origin', this.getOrigin());
+      url.searchParams.set('sheet', 'Planes');
+      url.searchParams.set('q', studentId);
+
+      const res = await fetch(url.toString(), { method: 'GET', mode: 'cors', cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      if (data.items && data.items.length > 0) {
+        return JSON.parse(data.items[0].plan || '{}'); // 👈 recupera el JSON guardado
+      }
+
+      return null;
     } catch (error) {
-      console.error('Error loading training plan:', error);
+      console.error('Error loading training plan from GAS:', error);
       return null;
     }
   }
 
-  async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
-    try {
-      localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
-    } catch (error) {
-      console.error('Error saving training plan:', error);
-      throw error;
-    }
-  }
+
+  // // -------- Training plans (localStorage) --------
+  // async getTrainingPlan(studentId: string): Promise<any> {
+  //   try {
+  //     return JSON.parse(localStorage.getItem(`wonderGymPlan_${studentId}`) || 'null');
+  //   } catch (error) {
+  //     console.error('Error loading training plan:', error);
+  //     return null;
+  //   }
+  // }
+
+  // async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
+  //   try {
+  //     localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
+  //   } catch (error) {
+  //     console.error('Error saving training plan:', error);
+  //     throw error;
+  //   }
+  // }
 }
 
 // Export singleton instance
