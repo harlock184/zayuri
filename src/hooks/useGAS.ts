@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getGASService } from '../services/gasService';
+import { getGASService, initializeGAS } from '../services/gasService';
 
 interface Student {
   id: string;
@@ -52,14 +52,14 @@ export const useGAS = () => {
         setError(null); // Don't show error for intentional local-only mode
         loadInitialDataFromLocalStorage();
       } else {
-        console.log('GAS service initialized successfully');
-        // Initialize GAS service
-        getGASService();
+        // Initialize the GAS service
+        initializeGAS({ url: gasUrl, apiKey: gasKey });
+        console.log('Google Sheets service initialized successfully');
         setIsConnected(true);
         loadInitialDataWithGASFallback();
       }
     } catch (err) {
-      console.error('GAS initialization error:', err);
+      console.error('Google Sheets initialization error:', err);
       setIsConnected(false);
       setError(null); // Don't show error, just use local mode
       loadInitialDataFromLocalStorage();
@@ -102,9 +102,8 @@ export const useGAS = () => {
     }
   };
 
-  // Load initial data with GAS fallback
   const loadInitialDataWithGASFallback = async () => {
-    console.log('Loading initial data with GAS fallback...');
+    console.log('Loading initial data with Google Sheets fallback...');
 
     // Always load from localStorage first (immediate)
     loadInitialDataFromLocalStorage();
@@ -180,20 +179,23 @@ export const useGAS = () => {
     }
   };
 
+
   // Public functions for manual loading
   const loadStudents = async (query?: string) => {
-    if (isConnected) {
+    try {
       await loadStudentsFromGAS(query);
-    } else {
-      console.log('GAS not connected, using localStorage only');
+    } catch {
+      console.log('Falling back to local students');
+      loadInitialDataFromLocalStorage();
     }
   };
 
   const loadCoaches = async (query?: string) => {
-    if (isConnected) {
+    try {
       await loadCoachesFromGAS(query);
-    } else {
-      console.log('GAS not connected, using localStorage only');
+    } catch {
+      console.log('Falling back to local coaches');
+      loadInitialDataFromLocalStorage();
     }
   };
 
@@ -397,9 +399,9 @@ export const useGAS = () => {
   // Función para refrescar datos manualmente (opcional)
   const refreshData = async () => {
     try {
-      await Promise.all([loadStudentsFromGAS(), loadCoachesFromGAS()]);
+      await Promise.all([loadStudentsFromGoogleSheets(), loadCoachesFromGoogleSheets()]);
     } catch (err) {
-      console.warn('Failed to refresh data from remote:', err);
+      console.warn('Could not load from Google Sheets, using localStorage data:', err);
     }
   };
 
@@ -421,8 +423,9 @@ export const useGAS = () => {
     saveTrainingPlan,
     getAllTrainingPlans,
     refreshData,
+
     setStudents,
     setCoaches,
     setError
   };
-}
+};
