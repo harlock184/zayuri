@@ -41,230 +41,186 @@ class GASService {
     return window.location.origin;
   }
 
-  // -------- GET (listar) --------
-  // -------- GET (listar) --------
+  // Generic GET request
   private async get(sheet: string, query?: string): Promise<any[]> {
-    const url = new URL(this.config.url);               // debe ser .../exec
-    url.searchParams.set('key', this.config.apiKey);
-    url.searchParams.set('origin', this.getOrigin());
-    url.searchParams.set('sheet', sheet);
-    if (query) url.searchParams.set('q', query);
-
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-store',
-    });
-
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    return data.items || [];
-  }
-
-
-  // -------- POST (append/update/delete) --------
-  private async post(
-    action: string,
-    sheet: string,
-    id?: string,
-    item?: any,
-    studentId?: string,
-    plan?: any
-  ): Promise<void> {
+    // If no URL configured, return empty array (will use localStorage)
     if (!this.config.url) {
-      console.log('GAS not configured, skipping remote operation');
-      return;
-    }
-    if (!this.config.url || this.config.url === 'YOUR_GAS_URL_HERE') {
-      throw new Error('Google Apps Script URL no configurada. Verifica tu archivo .env.local');
-    }
-    if (!this.config.apiKey || this.config.apiKey === 'YOUR_API_KEY_HERE') {
-      throw new Error('API Key no configurada. Verifica tu archivo .env.local');
+      throw new Error('GAS not configured');
     }
 
-    const body: any = { action, sheet };
-    if (id) body.id = id;
-    if (item) body.item = item;
-    if (studentId) body.studentId = studentId;
-    if (plan) body.plan = plan;
-
-    const url = new URL(this.config.url);
-    url.searchParams.set('key', this.config.apiKey);
-    url.searchParams.set('origin', this.getOrigin());
-
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(body),
-    });
-
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  }
-
-
-  // -------- Students --------
-  async getStudents(query?: string): Promise<Student[]> {
-    const items = await this.get('Alumnos', query);
-    return items.map(item => ({
-      id: String(item.id ?? ''),
-      nombre: String(item.nombre ?? ''),
-      diasEntrenamiento: String(item.diasEntrenamiento ?? ''),
-      coachAsignado: String(item.coachAsignado ?? ''),
-      fechaInicio: String(item.fechaInicio ?? ''),
-      fechaFin: String(item.fechaFin ?? ''),
-      email: String(item.email ?? ''),
-      telefono: String(item.telefono ?? ''),
-      nivel: String(item.nivel ?? ''),
-      objetivos: String(item.objetivos ?? ''),
-      creado_at: String(item.creado_at ?? '')
-    }));
-  }
-
-  async addStudent(student: Omit<Student, 'id' | 'creado_at'>): Promise<void> {
-    const item = { id: Date.now().toString(), ...student };
-    await this.post('append', 'Alumnos', undefined, item);
-  }
-
-  async updateStudent(id: string, student: Partial<Student>): Promise<void> {
-    await this.post('update', 'Alumnos', id, student);
-  }
-
-  async deleteStudent(id: string): Promise<void> {
-    await this.post('delete', 'Alumnos', id);
-  }
-
-  // -------- Coaches --------
-  async getCoaches(query?: string): Promise<Coach[]> {
-    const items = await this.get('Instructores', query);
-    return items.map(item => ({
-      id: String(item.id ?? ''),
-      nombre: String(item.nombre ?? ''),
-      email: String(item.email ?? ''),
-      telefono: String(item.telefono ?? ''),
-      especialidad: String(item.especialidad ?? ''),
-      experiencia: String(item.experiencia ?? ''),
-      certificaciones: String(item.certificaciones ?? ''),
-      activo: Boolean(item.activo === 'TRUE' || item.activo === true || item.activo === 'true'),
-      creado_at: String(item.creado_at ?? '')
-    }));
-  }
-
-  async addCoach(coach: Omit<Coach, 'id' | 'creado_at'>): Promise<void> {
-    const item = {
-      id: Date.now().toString(),
-      ...coach,
-      activo: coach.activo ? 'TRUE' : 'FALSE', // a texto como en Sheet
-    };
-    await this.post('append', 'Instructores', undefined, item);
-  }
-
-  async updateCoach(id: string, coach: Partial<Coach>): Promise<void> {
-    const item = {
-      ...coach,
-      ...(coach.activo !== undefined && { activo: coach.activo ? 'TRUE' : 'FALSE' })
-    };
-    await this.post('update', 'Instructores', id, item);
-  }
-
-  async deleteCoach(id: string): Promise<void> {
-    await this.post('delete', 'Instructores', id);
-  }
-
-
-  // -------- Training plans (Google Sheets en hoja "Planes") --------
-  async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
     try {
-      // guarda en GAS (hoja Planes)
-      await this.post('savePlan', 'Planes', undefined, undefined, studentId, planData);
+      const params = new URLSearchParams({
+        key: this.config.apiKey,
+        sheet,
+        origin: this.getOrigin()
+      });
 
-      // opcional: también guarda en localStorage como backup
-      localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
+      if (query) {
+        params.append('q', query);
+      }
+
+      const url = `${this.config.url}?${params.toString()}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Unknown error');
+      }
+
+      return data.items || [];
     } catch (error) {
-      console.error('Error saving training plan to GAS:', error);
+      console.error(`Error fetching from ${sheet}:`, error);
       throw error;
     }
   }
 
+  // Generic POST request
+  private async post(data: any): Promise<any> {
+    try {
+      const response = await fetch(this.config.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          key: this.config.apiKey,
+          origin: this.getOrigin()
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.ok) {
+        throw new Error(result.error || 'Unknown error');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error in POST request:', error);
+      throw error;
+    }
+  }
+
+  // Students methods
+  async getStudents(query?: string): Promise<Student[]> {
+    return this.get('Alumnos', query);
+  }
+
+  async addStudent(student: Omit<Student, 'id'>): Promise<void> {
+    await this.post({
+      action: 'append',
+      sheet: 'Alumnos',
+      item: {
+        ...student,
+        id: Date.now().toString()
+      }
+    });
+  }
+
+  async updateStudent(id: string, student: Partial<Student>): Promise<void> {
+    await this.post({
+      action: 'update',
+      sheet: 'Alumnos',
+      id,
+      item: student
+    });
+  }
+
+  async deleteStudent(id: string): Promise<void> {
+    await this.post({
+      action: 'delete',
+      sheet: 'Alumnos',
+      id
+    });
+  }
+
+  // Coaches methods
+  async getCoaches(query?: string): Promise<Coach[]> {
+    return this.get('Instructores', query);
+  }
+
+  async addCoach(coach: Omit<Coach, 'id'>): Promise<void> {
+    await this.post({
+      action: 'append',
+      sheet: 'Instructores',
+      item: {
+        ...coach,
+        id: Date.now().toString()
+      }
+    });
+  }
+
+  async updateCoach(id: string, coach: Partial<Coach>): Promise<void> {
+    await this.post({
+      action: 'update',
+      sheet: 'Instructores',
+      id,
+      item: coach
+    });
+  }
+
+  async deleteCoach(id: string): Promise<void> {
+    await this.post({
+      action: 'delete',
+      sheet: 'Instructores',
+      id
+    });
+  }
+
+  // Training plan methods
   async getTrainingPlan(studentId: string): Promise<any> {
     try {
-      const url = new URL(this.config.url);
-      url.searchParams.set('key', this.config.apiKey);
-      url.searchParams.set('origin', this.getOrigin());
-      url.searchParams.set('sheet', 'Planes');
-      url.searchParams.set('q', studentId);
+      const plans = await this.get('Planes');
+      const plan = plans.find((p: any) => p.studentId === studentId);
 
-      const res = await fetch(url.toString(), { method: 'GET', mode: 'cors', cache: 'no-store' });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-      if (data.items && data.items.length > 0) {
-        return JSON.parse(data.items[0].plan || '{}'); // 👈 recupera el JSON guardado
+      if (plan && plan.plan) {
+        try {
+          return JSON.parse(plan.plan);
+        } catch (e) {
+          console.error('Error parsing plan JSON:', e);
+          return null;
+        }
       }
 
       return null;
     } catch (error) {
-      console.error('Error loading training plan from GAS:', error);
+      console.error('Error getting training plan:', error);
       return null;
     }
   }
 
-
-  // // -------- Training plans (localStorage) --------
-  // async getTrainingPlan(studentId: string): Promise<any> {
-  //   try {
-  //     return JSON.parse(localStorage.getItem(`wonderGymPlan_${studentId}`) || 'null');
-  //   } catch (error) {
-  //     console.error('Error loading training plan:', error);
-  //     return null;
-  //   }
-  // }
-
-  // async saveTrainingPlan(studentId: string, planData: any): Promise<void> {
-  //   try {
-  //     localStorage.setItem(`wonderGymPlan_${studentId}`, JSON.stringify(planData));
-  //   } catch (error) {
-  //     console.error('Error saving training plan:', error);
-  //     throw error;
-  //   }
-  // }
+  async saveTrainingPlan(studentId: string, plan: any): Promise<void> {
+    await this.post({
+      action: 'savePlan',
+      studentId,
+      plan
+    });
+  }
 }
 
 // Export singleton instance
 let gasService: GASService | null = null;
 
-export const initializeGAS = (): GASService => {
-  console.log("[WG] VITE_GAS_URL =", import.meta.env.VITE_GAS_URL);
-  console.log("[WG] VITE_GAS_KEY length =", (import.meta.env.VITE_GAS_KEY || "").length);
-  const config = {
-    url: import.meta.env.VITE_GAS_URL || '',
-    apiKey: import.meta.env.VITE_GAS_KEY || ''
-  };
-
-  if (!config.url || !config.apiKey || config.url === 'undefined' || config.apiKey === 'undefined') {
-    console.log('GAS not configured, creating local-only service');
-    return new GASService({ url: '', apiKey: '' });
-  }
-
-  console.log("[WG] initializeGAS config =", config);
-
-
+export const initializeGAS = (config: GASConfig) => {
   gasService = new GASService(config);
   return gasService;
 };
 
 export const getGASService = (): GASService => {
   if (!gasService) {
-    console.log("[WG] getGASService: creando instancia");
-    console.log("[WG] VITE_GAS_URL =", import.meta.env.VITE_GAS_URL);
-    console.log("[WG] VITE_GAS_KEY length =", (import.meta.env.VITE_GAS_KEY || "").length);
-
-    return initializeGAS();
+    throw new Error('GAS service not initialized. Call initializeGAS first.');
   }
-  console.log("[WG] getGASService: usando instancia ya creada");
   return gasService;
 };
-
 
 export default GASService;
